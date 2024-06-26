@@ -1,25 +1,20 @@
 #include <Arduino.h>
-#ifdef ESP32
-#include <WiFi.h>
+#include <vector>
+#include <string>
 #include <AsyncTCP.h>
-#elif defined(ESP8266)
-#include <ESP8266WiFi.h>
-#include <ESPAsyncTCP.h>
-#endif
 #include <ESPAsyncWebServer.h>
-
+#include <WiFi.h>  // Ensure this is from the ESP32 library
+#include <sstream> // for std::istringstream
 #include <iostream>
-#include <sstream>
 
-struct MOTOR_PINS
-{
+
+struct MOTOR_PINS {
   int pinEn;  
   int pinIN1;
   int pinIN2;    
 };
 
-std::vector<MOTOR_PINS> motorPins = 
-{
+std::vector<MOTOR_PINS> motorPins = {
   {22, 7, 15},  //RIGHT_MOTOR Pins (EnA, IN1, IN2)
   {23, 16, 17},  //LEFT_MOTOR  Pins (EnB, IN3, IN4)
 };
@@ -49,37 +44,33 @@ AsyncWebSocket wsCarInput("/CarInput");
 const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <style>
+  <style>
     .arrows {
-      font-size:40px;
-      color:red;
+      font-size: 40px;
+      color: red;
     }
     td.button {
-      background-color:black;
-      border-radius:25%;
+      background-color: black;
+      border-radius: 25%;
       box-shadow: 5px 5px #888888;
     }
     td.button:active {
-      transform: translate(5px,5px);
-      box-shadow: none; 
+      transform: translate(5px, 5px);
+      box-shadow: none;
     }
-
     .noselect {
-      -webkit-touch-callout: none; /* iOS Safari */
-        -webkit-user-select: none; /* Safari */
-         -khtml-user-select: none; /* Konqueror HTML */
-           -moz-user-select: none; /* Firefox */
-            -ms-user-select: none; /* Internet Explorer/Edge */
-                user-select: none; /* Non-prefixed version, currently
-                                      supported by Chrome and Opera */
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -khtml-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
     }
-
     .slidecontainer {
       width: 100%;
     }
-
     .slider {
       -webkit-appearance: none;
       width: 100%;
@@ -91,11 +82,9 @@ const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
       -webkit-transition: .2s;
       transition: opacity .2s;
     }
-
     .slider:hover {
       opacity: 1;
     }
-  
     .slider::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
@@ -105,7 +94,6 @@ const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
       background: red;
       cursor: pointer;
     }
-
     .slider::-moz-range-thumb {
       width: 40px;
       height: 40px;
@@ -113,101 +101,134 @@ const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
       background: red;
       cursor: pointer;
     }
+  </style>
+</head>
+<body class="noselect" align="center" style="background-color:white">
 
-    </style>
+  <h1 style="color: teal; text-align: center;">Hash Include Electronics</h1>
+  <h2 style="color: teal; text-align: center;">WiFi Tank Control</h2>
   
-  </head>
-  <body class="noselect" align="center" style="background-color:white">
-     
-    <h1 style="color: teal;text-align:center;">Hash Include Electronics</h1>
-    <h2 style="color: teal;text-align:center;">WiFi Tank Control</h2>
-    
-    <table id="mainTable" style="width:400px;margin:auto;table-layout:fixed" CELLSPACING=10>
-      <tr>
-        <td></td>
-        <td class="button" ontouchstart='sendButtonInput("MoveCar","1")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows" >&#8679;</span></td>
-        <td></td>
-      </tr>
-      <tr>
-        <td class="button" ontouchstart='sendButtonInput("MoveCar","3")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows" >&#8678;</span></td>
-        <td class="button"></td>    
-        <td class="button" ontouchstart='sendButtonInput("MoveCar","4")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows" >&#8680;</span></td>
-      </tr>
-      <tr>
-        <td></td>
-        <td class="button" ontouchstart='sendButtonInput("MoveCar","2")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows" >&#8681;</span></td>
-        <td></td>
-      </tr>
-      <tr/><tr/>
-      <tr/><tr/>
-      <tr/><tr/>
-      <tr>
-        <td style="text-align:left;font-size:25px"><b>Speed:</b></td>
-        <td colspan=2>
-         <div class="slidecontainer">
-            <input type="range" min="0" max="255" value="150" class="slider" id="Speed" oninput='sendButtonInput("Speed",value)'>
-          </div>
-        </td>
-      </tr>       
-    </table>
-  
-    <script>
-      var webSocketCarInputUrl = "ws:\/\/" + window.location.hostname + "/CarInput";      
-      var websocketCarInput;
-      
-      function initCarInputWebSocket() 
-      {
-        websocketCarInput = new WebSocket(webSocketCarInputUrl);
-        websocketCarInput.onopen    = function(event)
-        {
-          var speedButton = document.getElementById("Speed");
-          sendButtonInput("Speed", speedButton.value);
-        };
-        websocketCarInput.onclose   = function(event){setTimeout(initCarInputWebSocket, 2000);};
-        websocketCarInput.onmessage = function(event){};        
+  <table id="mainTable" style="width: 400px; margin: auto; table-layout: fixed" CELLSPACING=10>
+    <tr>
+      <td></td>
+      <td class="button" ontouchstart='sendButtonInput("MoveCar","1")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows">&#8679;</span></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="button" ontouchstart='sendButtonInput("MoveCar","3")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows">&#8678;</span></td>
+      <td class="button"></td>    
+      <td class="button" ontouchstart='sendButtonInput("MoveCar","4")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows">&#8680;</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td class="button" ontouchstart='sendButtonInput("MoveCar","2")' ontouchend='sendButtonInput("MoveCar","0")'><span class="arrows">&#8681;</span></td>
+      <td></td>
+    </tr>
+    <tr><td colspan="3" style="height: 30px;"></td></tr>
+    <tr>
+      <td colspan="3">
+        <td class="button" ontouchstart='testPath()' ontouchend='sendButtonInput("MoveCar","0")'>Path1</td>
+      </td>
+    </tr>
+
+    <tr><td colspan="3" style="height: 30px;"></td></tr>
+    <tr>
+      <td style="text-align:left;font-size:25px"><b>Speed:</b></td>
+      <td colspan=2>
+        <div class="slidecontainer">
+          <input type="range" min="0" max="255" value="150" class="slider" id="Speed" oninput='sendButtonInput("Speed", value)'>
+        </div>
+      </td>
+    </tr>       
+  </table>
+
+  <script>
+    var webSocketCarInputUrl = "ws:\/\/" + window.location.hostname + "/CarInput";      
+    var websocketCarInput;
+
+    function initCarInputWebSocket() {
+      websocketCarInput = new WebSocket(webSocketCarInputUrl);
+      websocketCarInput.onopen    = function(event) {
+        var speedButton = document.getElementById("Speed");
+        sendButtonInput("Speed", speedButton.value);
+      };
+      websocketCarInput.onclose   = function(event){setTimeout(initCarInputWebSocket, 2000);};
+      websocketCarInput.onmessage = function(event){};
+    }
+
+    function sendButtonInput(key, value) {
+      var data = key + "," + value;
+      websocketCarInput.send(data);
+    }
+
+    window.onload = initCarInputWebSocket;
+    document.getElementById("mainTable").addEventListener("touchend", function(event) {
+      event.preventDefault();
+    });
+
+    function testPath() {
+      var pathCommands = [
+  { direction: "right", duration: 2000 },   // Move right for 5 seconds
+  { direction: "down", duration: 2000 },    // Move down for 2 seconds
+  { direction: "right", duration: 2000 },   // Move right for 3 seconds
+  { direction: "down", duration: 1000 },    // Move down for 1 second
+  { direction: "right", duration: 2000 },   // Move right for 4 seconds
+  { direction: "down", duration: 1000 },    // Move down for 2 seconds
+];
+
+      var index = 0;
+
+      function executePath() {
+        if (index < pathCommands.length) {
+          var command = pathCommands[index];
+          switch (command.direction) {
+            case "right":
+              move("MoveCar", "4");
+              break;
+            case "left":
+              move("MoveCar", "3");
+              break;
+            case "up":
+              move("MoveCar", "1");
+              break;
+            case "down":
+              move("MoveCar", "2");
+              break;
+            default:
+              break;
+          }
+          index++;
+          setTimeout(executePath, command.duration);
+        }
       }
-      
-      function sendButtonInput(key, value) 
-      {
+
+      function move(key, value) {
         var data = key + "," + value;
         websocketCarInput.send(data);
       }
-    
-      window.onload = initCarInputWebSocket;
-      document.getElementById("mainTable").addEventListener("touchend", function(event){
-        event.preventDefault()
-      });      
-    </script>
-  </body>    
+      executePath();
+    }
+  </script>
+</body>
 </html>
 )HTMLHOMEPAGE";
 
-
-void rotateMotor(int motorNumber, int motorDirection)
-{
-  if (motorDirection == FORWARD)
-  {
+void rotateMotor(int motorNumber, int motorDirection) {
+  if (motorDirection == FORWARD) {
     digitalWrite(motorPins[motorNumber].pinIN1, HIGH);
     digitalWrite(motorPins[motorNumber].pinIN2, LOW);    
-  }
-  else if (motorDirection == BACKWARD)
-  {
+  } else if (motorDirection == BACKWARD) {
     digitalWrite(motorPins[motorNumber].pinIN1, LOW);
     digitalWrite(motorPins[motorNumber].pinIN2, HIGH);     
-  }
-  else
-  {
+  } else {
     digitalWrite(motorPins[motorNumber].pinIN1, LOW);
     digitalWrite(motorPins[motorNumber].pinIN2, LOW);       
   }
 }
 
-void moveCar(int inputValue)
-{
+void moveCar(int inputValue) {
   Serial.printf("Got value as %d\n", inputValue);  
-  switch(inputValue)
-  {
-
+  switch(inputValue) {
     case UP:
       rotateMotor(RIGHT_MOTOR, FORWARD);
       rotateMotor(LEFT_MOTOR, FORWARD);                  
@@ -240,25 +261,35 @@ void moveCar(int inputValue)
   }
 }
 
-void handleRoot(AsyncWebServerRequest *request) 
-{
+void moveCarCommand(const std::string &direction, int value) {
+  if (direction == "right") {
+    rotateMotor(RIGHT_MOTOR, BACKWARD);
+    rotateMotor(LEFT_MOTOR, FORWARD);
+  } else if (direction == "left") {
+    rotateMotor(RIGHT_MOTOR, FORWARD);
+    rotateMotor(LEFT_MOTOR, BACKWARD);
+  } else if (direction == "up") {
+    rotateMotor(RIGHT_MOTOR, FORWARD);
+    rotateMotor(LEFT_MOTOR, FORWARD);
+  } else if (direction == "down") {
+    rotateMotor(RIGHT_MOTOR, BACKWARD);
+    rotateMotor(LEFT_MOTOR, BACKWARD);
+  }
+  
+  delay(value);  // Move for the specified duration (in milliseconds)
+  moveCar(STOP);  // Stop after the duration
+}
+
+void handleRoot(AsyncWebServerRequest *request) {
   request->send_P(200, "text/html", htmlHomePage);
 }
 
-void handleNotFound(AsyncWebServerRequest *request) 
-{
-    request->send(404, "text/plain", "File Not Found");
+void handleNotFound(AsyncWebServerRequest *request) {
+  request->send(404, "text/plain", "File Not Found");
 }
 
-void onCarInputWebSocketEvent(AsyncWebSocket *server, 
-                      AsyncWebSocketClient *client, 
-                      AwsEventType type,
-                      void *arg, 
-                      uint8_t *data, 
-                      size_t len) 
-{                      
-  switch (type) 
-  {
+void onCarInputWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  switch (type) {
     case WS_EVT_CONNECT:
       Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
       break;
@@ -266,11 +297,9 @@ void onCarInputWebSocketEvent(AsyncWebSocket *server,
       Serial.printf("WebSocket client #%u disconnected\n", client->id());
       moveCar(STOP);
       break;
-    case WS_EVT_DATA:
-      AwsFrameInfo *info;
-      info = (AwsFrameInfo*)arg;
-      if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) 
-      {
+    case WS_EVT_DATA: {
+      AwsFrameInfo *info = (AwsFrameInfo*)arg;
+      if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
         std::string myData = "";
         myData.assign((char *)data, len);
         std::istringstream ss(myData);
@@ -278,17 +307,18 @@ void onCarInputWebSocketEvent(AsyncWebSocket *server,
         std::getline(ss, key, ',');
         std::getline(ss, value, ',');
         Serial.printf("Key [%s] Value[%s]\n", key.c_str(), value.c_str()); 
-        int valueInt = atoi(value.c_str());     
-        if (key == "MoveCar")
-        {
-          moveCar(valueInt);        
-        }
-        else if (key == "Speed")
-        {
+        int valueInt = atoi(value.c_str());
+        
+        if (key == "MoveCar") {
+          moveCar(valueInt);
+        } else if (key == "Speed") {
           ledcWrite(PWMSpeedChannel, valueInt);
+        } else if (key == "Direction") {
+          moveCarCommand(value, valueInt); // changed key to value for moveCarCommand
         }
       }
       break;
+    }
     case WS_EVT_PONG:
     case WS_EVT_ERROR:
       break;
@@ -297,13 +327,12 @@ void onCarInputWebSocketEvent(AsyncWebSocket *server,
   }
 }
 
-void setUpPinModes()
-{
+
+void setUpPinModes() {
   //Set up PWM
   // ledcSetup(PWMSpeedChannel, PWMFreq, PWMResolution);
       
-  for (int i = 0; i < motorPins.size(); i++)
-  {
+  for (int i = 0; i < motorPins.size(); i++) {
     pinMode(motorPins[i].pinEn, OUTPUT);    
     pinMode(motorPins[i].pinIN1, OUTPUT);
     pinMode(motorPins[i].pinIN2, OUTPUT);  
@@ -314,9 +343,7 @@ void setUpPinModes()
   moveCar(STOP);
 }
 
-
-void setup(void) 
-{
+void setup(void) {
   setUpPinModes();
   Serial.begin(115200);
 
@@ -334,9 +361,10 @@ void setup(void)
   server.begin();
   Serial.println("HTTP server started");
 
+  // Uncomment and adjust the path testing function as needed
+  // testPath();
 }
 
-void loop() 
-{
+void loop() {
   wsCarInput.cleanupClients(); 
 }
