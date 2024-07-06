@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.MotionEvent
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -29,21 +31,24 @@ class MainActivity : AppCompatActivity() {
     lateinit var tvVoltage: TextView
     lateinit var txtIP: TextInputEditText
     lateinit var btnConnect: Button
-    lateinit var btnSendCommand: Button
+    lateinit var btnUp: Button
+    lateinit var btnDown: Button
+    lateinit var btnLeft: Button
+    lateinit var btnRight: Button
 
     private var webSocketClient: WebSocketClient? = null
+    private var handler: Handler = Handler(Looper.getMainLooper())
+    private var sendCommandRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        tvRPM = findViewById(R.id.tvRPM)
-        tvTemp = findViewById(R.id.tvTemperature)
-        tvCapacitance = findViewById(R.id.tvCapacitance)
-        tvVoltage = findViewById(R.id.tvVoltage)
         txtIP = findViewById(R.id.txt_ip)
         btnConnect = findViewById(R.id.btn_connect)
-        btnSendCommand = findViewById(R.id.btn_send_command)
+        btnUp = findViewById(R.id.btn_up)
+        btnDown = findViewById(R.id.btn_down)
+        btnLeft = findViewById(R.id.btn_left)
+        btnRight = findViewById(R.id.btn_right)
 
         btnConnect.setOnClickListener {
             val ipAddress = txtIP.text.toString()
@@ -64,8 +69,35 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        btnSendCommand.setOnClickListener {
-            sendCommandToESP32("MoveCar,1")
+        setButtonTouchListener(btnUp, "MoveCar,1")
+        setButtonTouchListener(btnDown, "MoveCar,2")
+        setButtonTouchListener(btnLeft, "MoveCar,3")
+        setButtonTouchListener(btnRight, "MoveCar,4")
+    }
+
+    private fun setButtonTouchListener(button: Button, command: String) {
+        button.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> startSendingCommand(command)
+                MotionEvent.ACTION_UP -> stopSendingCommand()
+            }
+            true
+        }
+    }
+
+    private fun startSendingCommand(command: String) {
+        sendCommandRunnable = object : Runnable {
+            override fun run() {
+                sendCommandToESP32(command)
+                handler.postDelayed(this, 100) // Send command every 100 ms
+            }
+        }
+        handler.post(sendCommandRunnable!!)
+    }
+
+    private fun stopSendingCommand() {
+        sendCommandRunnable?.let {
+            handler.removeCallbacks(it)
         }
     }
 
