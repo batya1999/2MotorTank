@@ -1,174 +1,153 @@
-package com.programminghut.realtime_object;
+package com.brandonhxrr.esp
 
-import android.annotation.SuppressLint;
-import android.content.Context;
-import android.content.pm.PackageManager;
-import android.graphics.*;
-import android.hardware.camera2.CameraCaptureSession;
-import android.hardware.camera2.CameraDevice;
-import android.hardware.camera2.CameraManager;
-import androidx.appcompat.app.AppCompatActivity;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.view.Surface;
-import android.view.TextureView;
-import android.widget.ImageView;
-import androidx.core.content.ContextCompat;
-import com.programminghut.realtime_object.ml.SsdMobilenetV11Metadata1;
-import org.tensorflow.lite.support.common.FileUtil;
-import org.tensorflow.lite.support.image.ImageProcessor;
-import org.tensorflow.lite.support.image.TensorImage;
-import org.tensorflow.lite.support.image.ops.ResizeOp;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.textfield.TextInputEditText
+import org.java_websocket.client.WebSocketClient
+import org.java_websocket.handshake.ServerHandshake
+import org.json.JSONObject
+import java.net.URI
+import java.net.URISyntaxException
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Timer
+import java.util.TimerTask
 
-public class MainActivity : AppCompatActivity(){
+class MainActivity : AppCompatActivity() {
 
-    lateinit var labels: List<String>;
-    var colors = listOf<Int>(
-        Color.BLUE, Color.GREEN, Color.RED, Color.CYAN, Color.GRAY, Color.BLACK,
-        Color.DKGRAY, Color.MAGENTA, Color.YELLOW, Color.RED);
-    val paint = Paint();
-    lateinit var imageProcessor: ImageProcessor;
-    lateinit var bitmap: Bitmap;
-    lateinit var imageView: ImageView;
-    lateinit var cameraDevice: CameraDevice;
-    lateinit var handler: Handler;
-    lateinit var cameraManager: CameraManager;
-    lateinit var textureView: TextureView;
-    lateinit var model: SsdMobilenetV11Metadata1;
+    lateinit var tvRPM: TextView
+    lateinit var tvTemp: TextView
+    lateinit var tvCapacitance: TextView
+    lateinit var tvVoltage: TextView
+    lateinit var txtIP: TextInputEditText
+    lateinit var btnConnect: Button
+    lateinit var btnSendCommand: Button
+
+    private var webSocketClient: WebSocketClient? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        get_permission();
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        labels = FileUtil.loadLabels(this, "labels.txt");
-        imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build();
-        model = SsdMobilenetV11Metadata1.newInstance(this);
-        val handlerThread = HandlerThread("videoThread");
-        handlerThread.start();
-        handler = Handler(handlerThread.looper);
+        tvRPM = findViewById(R.id.tvRPM)
+        tvTemp = findViewById(R.id.tvTemperature)
+        tvCapacitance = findViewById(R.id.tvCapacitance)
+        tvVoltage = findViewById(R.id.tvVoltage)
+        txtIP = findViewById(R.id.txt_ip)
+        btnConnect = findViewById(R.id.btn_connect)
+        btnSendCommand = findViewById(R.id.btn_send_command)
 
-        imageView = findViewById(R.id.imageView);
-
-        textureView = findViewById(R.id.textureView);
-        textureView.surfaceTextureListener = object: TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureAvailable(p0: SurfaceTexture, p1: Int, p2: Int) {
-                open_camera();
-            }
-            override fun onSurfaceTextureSizeChanged(p0: SurfaceTexture, p1: Int, p2: Int) {}
-
-            override fun onSurfaceTextureDestroyed(p0: SurfaceTexture): Boolean {
-                return false;
-            }
-
-            override fun onSurfaceTextureUpdated(p0: SurfaceTexture) {
-                bitmap = textureView.bitmap!!;
-                var image = TensorImage.fromBitmap(bitmap);
-                image = imageProcessor.process(image);
-
-                val outputs = model.process(image);
-                val locations = outputs.locationsAsTensorBuffer.floatArray;
-                val classes = outputs.classesAsTensorBuffer.floatArray;
-                val scores = outputs.scoresAsTensorBuffer.floatArray;
-                val numberOfDetections = outputs.numberOfDetectionsAsTensorBuffer.floatArray;
-
-                var mutable = bitmap.copy(Bitmap.Config.ARGB_8888, true);
-                val canvas = Canvas(mutable);
-
-                val h = mutable.height;
-                val w = mutable.width;
-                paint.textSize = h/15f;
-                paint.strokeWidth = h/85f;
-                var x = 0;
-                var personDetected = false;
-                scores.forEachIndexed { index, fl ->
-                    x = index;
-                    x *= 4;
-                    if (fl > 0.5 && labels[classes[index].toInt()] == "person") {
-                        paint.color = colors[index];
-                        paint.style = Paint.Style.STROKE;
-                        canvas.drawRect(RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h), paint);
-                        paint.style = Paint.Style.FILL;
-                        canvas.drawText(labels[classes[index].toInt()] + " " + fl.toString(), locations[x+1]*w, locations[x]*h, paint);
-                        personDetected = true;
+        btnConnect.setOnClickListener {
+            val ipAddress = txtIP.text.toString()
+            if (isIPAddress(ipAddress)) {
+                connectWebSocket(ipAddress)
+                val timer = Timer()
+                timer.schedule(object : TimerTask() {
+                    override fun run() {
+                        fetchDataFromESP32(ipAddress)
                     }
-                }
-                if (personDetected) {
-                    sendCommandToESP32("MOVE_FORWARD");
-                } else {
-                    sendCommandToESP32("STOP");
-                }
-                imageView.setImageBitmap(mutable);
-            }
-        };
-
-        cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager;
-    }
-
-    override fun onDestroy() {
-        super.onDestroy();
-        model.close();
-    }
-
-    fun sendCommandToESP32(command: String) {
-        val thread = Thread {
-            try {
-                val url = URL("http://192.168.4.1/command?move=" + command);
-                val httpURLConnection = url.openConnection() as HttpURLConnection;
-                httpURLConnection.requestMethod = "GET";
-                httpURLConnection.connect();
-                val responseCode = httpURLConnection.responseCode;
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    // Success
-                } else {
-                    // Error handling
-                }
-            } catch (e: Exception) {
-                e.printStackTrace();
+                }, 0, 1500)
+            } else {
+                Toast.makeText(
+                    applicationContext,
+                    "No es una dirección IP válida",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
-        thread.start();
-    }
 
-    @SuppressLint("MissingPermission")
-    fun open_camera() {
-        cameraManager.openCamera(cameraManager.cameraIdList[0], object : CameraDevice.StateCallback() {
-            override fun onOpened(p0: CameraDevice) {
-                cameraDevice = p0;
-
-                var surfaceTexture = textureView.surfaceTexture;
-                var surface = Surface(surfaceTexture);
-
-                var captureRequest = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                captureRequest.addTarget(surface);
-
-                cameraDevice.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(p0: CameraCaptureSession) {
-                        p0.setRepeatingRequest(captureRequest.build(), null, null);
-                    }
-                    override fun onConfigureFailed(p0: CameraCaptureSession) {}
-                }, handler);
-            }
-
-            override fun onDisconnected(p0: CameraDevice) {}
-
-            override fun onError(p0: CameraDevice, p1: Int) {}
-        }, handler);
-    }
-
-    fun get_permission() {
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 101);
+        btnSendCommand.setOnClickListener {
+            sendCommandToESP32("MoveCar,1")
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-            get_permission();
+    private fun connectWebSocket(ip: String) {
+        val uri: URI
+        try {
+            uri = URI("ws://$ip/CarInput")
+        } catch (e: URISyntaxException) {
+            e.printStackTrace()
+            return
         }
+
+        webSocketClient = object : WebSocketClient(uri) {
+            override fun onOpen(handshakedata: ServerHandshake) {
+                Log.d("WebSocket", "Connected")
+            }
+
+            override fun onMessage(message: String) {
+                Log.d("WebSocket", "Message received: $message")
+            }
+
+            override fun onClose(code: Int, reason: String, remote: Boolean) {
+                Log.d("WebSocket", "Disconnected")
+            }
+
+            override fun onError(ex: Exception) {
+                ex.printStackTrace()
+                Log.e("WebSocket", "Error: ${ex.message}")
+            }
+        }
+        webSocketClient?.connect()
+    }
+
+    private fun sendCommandToESP32(command: String) {
+        if (webSocketClient != null && webSocketClient!!.isOpen) {
+            webSocketClient!!.send(command)
+        } else {
+            Toast.makeText(applicationContext, "WebSocket is not connected", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun fetchDataFromESP32(ip: String) {
+        try {
+            val url = URL("http://$ip/")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+
+            val reader = BufferedReader(InputStreamReader(connection.inputStream))
+            val responseStringBuilder = StringBuilder()
+            var line: String?
+
+            while (reader.readLine().also { line = it } != null) {
+                responseStringBuilder.append(line)
+            }
+
+            val response = responseStringBuilder.toString()
+
+            if (response.isNotEmpty()) {
+                val json = JSONObject(response)
+                val rpm = json.getDouble("rpm")
+                val capacitance = json.getDouble("capacitancia")
+                val temperature = json.getDouble("temperatura")
+                val voltage = json.getDouble("voltaje")
+
+                val isMagneticField = if (capacitance == 100.0) "No" else "Si"
+
+                Handler(Looper.getMainLooper()).post {
+                    tvRPM.text = String.format("%.0f rpm", rpm)
+                    tvTemp.text = String.format("%.2f °C", temperature)
+                    tvCapacitance.text = isMagneticField
+                    tvVoltage.text = String.format("%.2f V", voltage)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Log.e("MainActivity", "Error: ${e.message}")
+        }
+    }
+
+    private fun isIPAddress(ip: String): Boolean {
+        val regex =
+            Regex(pattern = "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
+        return ip.matches(regex)
     }
 }
