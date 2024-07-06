@@ -35,7 +35,7 @@ const int PWMFreq = 1000; /* 1 KHz */
 const int PWMResolution = 8;
 const int PWMSpeedChannel = 4;
 
-const char* ssid     = "MyWiFiCar";
+const char* ssid     = "Mycar";
 const char* password = "12345678";
 
 AsyncWebServer server(80);
